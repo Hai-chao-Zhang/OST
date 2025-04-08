@@ -16,7 +16,7 @@ by [Haichao Zhang](https://Hai-chao-Zhang.github.io/), [Yi Xu](https://sites.goo
 <div align="center">
 
 <a href="">
-<img width="800" alt="image" src="https://www.zhanghaichao.xyz/Out-of-SightTrajPred/assets/head.png">
+<img width="800" alt="image" src="fig/application.png">
 </a>
 </div>
 
