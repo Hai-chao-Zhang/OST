@@ -32,17 +32,6 @@ Our **TPAMI** extension builds upon the CVPR 2024 conference version and present
 
 By robustly denoising trajectories from noisy sensor data and mapping them into coherent visual space, our method significantly boosts performance under out-of-view scenarios. This work sets a new standard for out-of-sight trajectory reasoning.
 
----
-
-<div align="center">
-<strong>Vision-Positioning Denoising Model in OOSTraj</strong>
-
-<a href="">
-<img width="800" alt="image" src="https://www.zhanghaichao.xyz/Out-of-SightTrajPred/assets/arch.png">
-</a>
-</div>
-
----
 
 ## 🔧 Datasets
 
