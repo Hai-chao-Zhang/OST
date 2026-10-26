@@ -4,7 +4,7 @@
 
 ## Out-of-Sight Trajectory
 
-### TPAMI Submission (Extended Version)
+### TPAMI (Extended Version)
 
 by [Haichao Zhang](https://Hai-chao-Zhang.github.io/), [Yi Xu](https://sites.google.com/view/homepage-of-yi-xu/), [Yun Fu](http://www1.ece.neu.edu/~yunfu/).  
 </div>
