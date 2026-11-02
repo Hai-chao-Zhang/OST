@@ -1,6 +1,6 @@
 <div align="center">
 
-# OST
+# Out-of-Sight Embodied Agents: Multimodal Tracking, Sensor Fusion, and Trajectory Forecasting
 
 ## Out-of-Sight Trajectory
 
