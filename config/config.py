@@ -1,5 +1,6 @@
 import argparse, os
 import glob
+from pathlib import Path
 
 class Config:
     def __init__(self, args):
@@ -10,6 +11,26 @@ class Config:
         self.args = args # self.parser.parse_args()
 
         self.root_path = './' # '../../../..'
+
+        # The released Vi-Fi/JRDB loaders read a single processed pickle and
+        # do not require the original RAN sequence directory tree.
+        dataset = getattr(args, 'dataset', 'vifi')
+        data_paths = {
+            'vifi': 'vifi_dataset_gps/vifi_data.pkl',
+            'jrdb': 'JRDB/jrdb.pkl',
+        }
+        if dataset in data_paths:
+            repo_root = Path(__file__).resolve().parents[1]
+            data_file = getattr(args, 'data_file', None)
+            self.data_file = str(
+                Path(data_file).expanduser().resolve() if data_file
+                else repo_root / data_paths[dataset]
+            )
+            if not getattr(args, 'is_proc_data', False):
+                self.BBX5_dim = 4
+                self.IMU19_dim = 19
+                self.recent_K = args.recent_K
+                return
 
         # ------------------------------------------
         #  To be updated in prepare_training_data()

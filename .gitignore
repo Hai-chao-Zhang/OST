@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+*.pkl
+*.pth
+checkpoints/
+vis/
+datasets/
+Data/

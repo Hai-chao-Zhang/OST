@@ -5,7 +5,6 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
-from sklearn.model_selection import train_test_split
 import pickle, random, copy
 # from .noisytraj.imu_cal import imu_cal
 import random
@@ -20,7 +19,13 @@ class Dataset_JRDB(Dataset):
         self.flag = flag
         self.shuffle_unsup = shuffle_unsup
         self.C = C
-        with open(os.path.join( "/home/haichao/code/gps/gpspred/JRDB/jrdb.pkl"), 'rb') as f:
+        if not os.path.isfile(C.data_file):
+            raise FileNotFoundError(
+                f"JRDB data file not found: {C.data_file}. Download jrdb.pkl "
+                "from the README dataset link and place it at this path, or use "
+                "--data_file /path/to/jrdb.pkl."
+            )
+        with open(C.data_file, 'rb') as f:
             sensor_data, gt = pickle.load(f)
         print("load data from pkl...")
         self.transform = transforms.Compose(

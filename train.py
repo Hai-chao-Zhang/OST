@@ -5,16 +5,13 @@ import argparse, os
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image  
-import torchmetrics
 from config.config import Config
 import pickle as pkl
 from data.dataloader import Dataset_ViFi, load_data
-from h3d.dataloader import Dataset_H3D, load_data_h3d
 from JRDB.dataloader import Dataset_JRDB, load_data_jrdb
 
 import random
 import logging
-from torchsummary import summary
 from torch.optim.lr_scheduler import ExponentialLR
 
 # from model.vitag import ViTag, LSTM, NMT
@@ -26,6 +23,33 @@ torch.manual_seed(seed)
 np.random.seed(seed)
 random.seed(seed)
 
+
+def checkpoint_directory(args):
+    """Keep datasets' incompatible model weights in separate directories."""
+    if args.checkpoint_dir:
+        return os.path.expanduser(args.checkpoint_dir)
+    pos = "noisy" if args.is_pos else ""
+    return os.path.join("checkpoints", args.dataset,
+                        f"{args.model}_{pos}_{args.dec_model}")
+
+
+def evaluation_checkpoint(args):
+    if args.checkpoint:
+        return os.path.expanduser(args.checkpoint)
+    return os.path.join(checkpoint_directory(args), "phase_2_model.pth")
+
+
+def require_checkpoint(checkpoint):
+    if not os.path.isfile(checkpoint):
+        raise FileNotFoundError(
+            f"Model checkpoint not found: {checkpoint}. "
+            "Run train.py train --dataset <vifi|jrdb> --gpus 0 first "
+            "(the default run trains phases 1 and 2), or pass "
+            "--checkpoint /path/to/phase_2_model.pth for matching trained weights. "
+            "The dataset .pkl files do not contain model weights."
+        )
+
+
 class EarlyStopping():
     def __init__(self,logger,patience=7,verbose=True,delta=0):
         self.logger = logger
@@ -34,7 +58,7 @@ class EarlyStopping():
         self.counter = 0
         self.best_score = None
         self.early_stop = False
-        self.val_loss_min = np.Inf
+        self.val_loss_min = np.inf
         self.delta = delta
         self.best_epoch = 0
 
@@ -58,12 +82,21 @@ class EarlyStopping():
     def save_checkpoint(self,val_loss,model,path, phase):
         if self.verbose:
             self.logger.debug(
-                f'Validation loss increased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
-        torch.save(model.state_dict(), path+'/'+f'phase_{phase}_model.pth')
+                f'Validation loss improved ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+        # Save unwrapped weights so a multi-GPU run can be evaluated on one GPU.
+        model_to_save = model.module if isinstance(model, nn.DataParallel) else model
+        torch.save(model_to_save.state_dict(), os.path.join(path, f'phase_{phase}_model.pth'))
         self.val_loss_min = val_loss
 
-    def load_checkpoint(self, model, path, phase):
-            model.load_state_dict(torch.load(path+'/'+f'phase_{phase}_model.pth'))
+    def load_checkpoint(self, model, path, phase, checkpoint=None):
+        checkpoint = checkpoint or os.path.join(path, f'phase_{phase}_model.pth')
+        require_checkpoint(checkpoint)
+        state_dict = torch.load(checkpoint, map_location="cpu", weights_only=True)
+        # Older releases saved DataParallel's "module." prefix.
+        if state_dict and all(key.startswith("module.") for key in state_dict):
+            torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(state_dict, "module.")
+        model_to_load = model.module if isinstance(model, nn.DataParallel) else model
+        model_to_load.load_state_dict(state_dict)
 
 
 
@@ -72,9 +105,7 @@ class Calculate():
         super(Calculate,self).__init__()
 
         self.device = device[0]
-        pos = "noisy" if C.args.is_pos else ""
-        # self.ckpt_saving_path = os.path.join(f"checkpoints", f"{args.model}_{pos}_{args.dec_model}_Ablation")
-        self.ckpt_saving_path = os.path.join(f"checkpoints", f"{args.model}_{pos}_{args.dec_model}")
+        self.ckpt_saving_path = checkpoint_directory(args)
         self.model = model.cuda()
         self.criterion = nn.MSELoss(reduction="mean").cuda()
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=args.learning_rate, weight_decay = 0.0005)
@@ -96,6 +127,7 @@ class Calculate():
                 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
         if not os.path.exists(self.ckpt_saving_path):
             os.makedirs(self.ckpt_saving_path)
+        os.makedirs("vis", exist_ok=True)
             
         logging.basicConfig(level=logging.DEBUG,
                         filename=os.path.join(self.ckpt_saving_path, 'output.log'),
@@ -154,8 +186,6 @@ class Calculate():
             self.train_dataloader, self.valid_dataloader = load_data(config)
         elif C.args.dataset == "jrdb":
             self.train_dataloader, self.valid_dataloader = load_data_jrdb(config)
-        elif C.args.dataset == "h3d":
-            self.train_dataloader, self.valid_dataloader = load_data_h3d()
         else:
             raise ValueError("Dataset not supported")
         dsize = 6 if C.args.dataset == "h3d" else 5
@@ -371,12 +401,13 @@ class Calculate():
         self.logger.debug(f"best score is {self.early_stopping.best_score} best epoch is {self.early_stopping.best_epoch} ")
     
     def test_vis(self, config):
+        self.early_stopping.load_checkpoint(
+            self.model, path=self.ckpt_saving_path, phase=2,
+            checkpoint=evaluation_checkpoint(config.args))
         if C.args.dataset == "vifi":
             self.train_dataloader, self.valid_dataloader = load_data(config)
         elif C.args.dataset == "jrdb":
             self.train_dataloader, self.valid_dataloader = load_data_jrdb(config)
-        elif C.args.dataset == "h3d":
-            self.train_dataloader, self.valid_dataloader = load_data_h3d()
         else:
             raise ValueError("Dataset not supported")
         dsize = 6 if C.args.dataset == "h3d" else 5
@@ -385,9 +416,6 @@ class Calculate():
         # traj, ftm, imu, target = next(iter(self.train_dataloader))
         # self.logger.info(summary(self.model, [list(traj.shape)[1:], list(ftm.shape)[1:], list(imu.shape)[1:]]))
         self.logger.info(self.model)
-
-        # if config.args.phase !=1:
-        self.early_stopping.load_checkpoint(self.model, path=self.ckpt_saving_path, phase=2)
 
         #=====================valid============================
         self.model.eval()
@@ -659,8 +687,8 @@ class IoU(nn.Module):
         return iou, iou * depth
 
 if __name__=="__main__":
-    parser = argparse.ArgumentParser(description='Toyota Project')
-    parser.add_argument("mode", nargs="?", type=str, default= None, help="test an image, input image path")
+    parser = argparse.ArgumentParser(description='OST training and evaluation on preprocessed Vi-Fi/JRDB data')
+    parser.add_argument("mode", choices=["train", "test"], help="train a model or evaluate trained weights")
     parser.add_argument("testpath", nargs="?", type=str, default= None, help="test an image, input image path")
     parser.add_argument("--predict", nargs="?", type=str, default= None, help="test additional images")
     parser.add_argument("--device", nargs="?", type=str, default= [torch.device("cuda:1" if torch.cuda.is_available() else "cpu"),], help="gpu device")
@@ -674,24 +702,39 @@ if __name__=="__main__":
     parser.add_argument('--mask_ratio',  type=float, default=0.5, help='Window length') # edit
     
     parser.add_argument('-l', '--loss', type=str, default='mse', help='mse: Mean Squared Error | b: Bhattacharyya Loss')
-    parser.add_argument('-rt', '--resume_training', action='store_true', help='resume from checkpoint')
-    parser.add_argument("--is_proc_data", action='store_true', help="if ture, process dataset")
+    parser.add_argument('-rt', '--resume_training', action='store_true', help='reserved legacy option; resume is not implemented')
+    parser.add_argument("--is_proc_data", action='store_true', help="legacy raw-data configuration; omit when using downloaded .pkl files")
     parser.add_argument('--random', action='store_true', help='random start')
 
-    parser.add_argument("--phase", nargs="?", type=int, default= 1, choices=[1,2,3], help="Training Phase of our model, the flag is the masking strategies ")
-    parser.add_argument("--gpus", nargs="?", type=str, default= "0,1", help="input img size e.g, 0,1")
+    parser.add_argument("--phase", type=int, default=1, choices=[1,2,3], help="training phase label; 1 runs phases 1 then 2; 2/3 start a standalone run, not resume")
+    parser.add_argument("--gpus", type=str, default="0", help="CUDA device IDs, e.g. 0 or 0,1")
     parser.add_argument("--is_pos", action='store_true', help="if ture calculate imu trajectory")
 
     parser.add_argument("--model", nargs="?", type=str, default= "VisionPosition",choices=["VisionPosition"], help="model choose")
     parser.add_argument("--dec_model", nargs="?", type=str, default= "Transformer",choices=["Transformer"], help="predict model choose")
 
-    parser.add_argument("--dataset", nargs="?", type=str, default= "vifi",choices=["vifi", "h3d", "jrdb"], help="input img size") 
+    parser.add_argument("--dataset", type=str, default="vifi", choices=["vifi", "jrdb"], help="released dataset; the legacy H3D loader is not included")
+    parser.add_argument("--data_file", type=str, help="preprocessed .pkl path; defaults to the dataset's directory in this repository")
+    parser.add_argument("--checkpoint_dir", type=str, help="directory for saved weights/logs; defaults to checkpoints/<dataset>/<model>_<pos>_<decoder>")
+    parser.add_argument("--checkpoint", type=str, help="explicit trained state_dict file for test mode, including legacy checkpoint paths")
 
     args = parser.parse_args()
+    if args.resume_training:
+        parser.error("--resume_training is not implemented; saved files contain model weights only, not optimizer state.")
+    if args.checkpoint and args.mode != "test":
+        parser.error("--checkpoint is for test mode; it does not resume training.")
+    if args.mode == "test":
+        try:
+            require_checkpoint(evaluation_checkpoint(args))
+        except FileNotFoundError as exc:
+            parser.error(str(exc))
     args.gpus = [int(gpu) for gpu in args.gpus.split(",")]
     C = Config(args)
-    if len(args.gpus) == 1:
-        torch.cuda.set_device(args.gpus[0])
+    if not os.path.isfile(C.data_file):
+        parser.error(f"Preprocessed dataset not found: {C.data_file}. Download the .pkl file or set --data_file.")
+    if not torch.cuda.is_available():
+        parser.error("Training/evaluation requires a CUDA GPU; the current runner uses CUDA tensors.")
+    torch.cuda.set_device(args.gpus[0])
     if args.model != 'VisionPosition':
         model =  getattr(model_module, args.model)(C)
     else:
