@@ -36,7 +36,10 @@ By robustly denoising trajectories from noisy sensor data and mapping them into 
 ## 🔧 Datasets
 
 ### Processed Vi-Fi and JRDB Datasets  
-📂 [Google Drive (Preprocessed .pkl Files)](https://drive.google.com/drive/folders/1W6ze1z8X54kK9BOgYbXYQj_AScf79Z-q?usp=sharing)
+- [Hugging Face — Out-of-Sight Trajectory Prediction](https://huggingface.co/datasets/haichaozhang/out-of-sight-trajectory-prediction)
+- [Google Drive (Original Download)](https://drive.google.com/drive/folders/1W6ze1z8X54kK9BOgYbXYQj_AScf79Z-q?usp=sharing)
+
+The Hugging Face mirror includes both preprocessed `.pkl` files, download instructions, and SHA-256 checksums.
 
 Place the downloaded files into:
 
