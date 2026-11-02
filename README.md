@@ -39,3 +39,14 @@ By robustly denoising trajectories from noisy sensor data and mapping them into 
 📂 [Google Drive (Preprocessed .pkl Files)](https://drive.google.com/drive/folders/1W6ze1z8X54kK9BOgYbXYQj_AScf79Z-q?usp=sharing)
 
 Place the downloaded files into:
+
+
+
+
+@article{zhang2026out,
+  title={Out-of-Sight Embodied Agents: Multimodal Tracking, Sensor Fusion, and Trajectory Forecasting},
+  author={Zhang, Haichao and Xu, Yi and Fu, Yun},
+  journal={IEEE Transactions on Pattern Analysis and Machine Intelligence},
+  year={2026},
+  publisher={IEEE}
+}
